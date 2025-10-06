@@ -1,0 +1,78 @@
+# ============================================================
+#  GitHub Actions Workflow: SAST - Semgrep
+#  Purpose: Run static code analysis (SAST) using Semgrep,
+#           export JSON + SARIF reports, and upload them as artifacts.
+#  This pipeline supports ISO 27001 evidence collection.
+# ============================================================
+
+name: SAST - Semgrep  # The name shown in the Actions tab
+
+# ------------------------------------------------------------
+# Trigger: when to run this workflow
+# - On any push to the main branch
+# - On any pull request targeting the main branch
+# ------------------------------------------------------------
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  semgrep:                     # Name of the job
+    runs-on: ubuntu-latest     # Runner environment provided by GitHub
+
+    steps:
+      # ------------------------------------------------------
+      # Step 1: Checkout repository code
+      # ------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        # Pulls your repository into the runner workspace
+
+      # ------------------------------------------------------
+      # Step 2: Install Semgrep
+      # ------------------------------------------------------
+      - name: Install Semgrep
+        run: |
+          # Upgrade pip and install Semgrep using Python's package manager
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      # ------------------------------------------------------
+      # Step 3: Run Semgrep scan
+      # ------------------------------------------------------
+      - name: Run Semgrep
+        run: |
+          # Create a directory to store results
+          mkdir -p semgrep-results
+
+          # Run Semgrep with the default community CI ruleset (p/ci)
+          # Generate a JSON report
+          semgrep --config p/ci --json > semgrep-results/semgrep.json || true
+
+          # Generate a SARIF report (standard format used by GitHub)
+          semgrep --config p/ci --sarif semgrep-results/semgrep.sarif || true
+          
+          # The `|| true` ensures the step does not fail even if findings are detected
+          # (Semgrep exits non-zero if issues are found, which we don’t want to break CI)
+
+      # ------------------------------------------------------
+      # Step 4: Upload results as artifacts for ISO audit traceability
+      # ------------------------------------------------------
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-reports         # Artifact name shown in the Actions UI
+          path: semgrep-results/        # Directory to upload
+          retention-days: 30            # Keep artifacts for 30 days (adjust per policy)
+
+      # ------------------------------------------------------
+      # Step 5 (Optional): Upload SARIF to GitHub Security tab
+      # Enables Semgrep findings to appear under "Code scanning alerts"
+      # Requires repository security features enabled
+      # ------------------------------------------------------
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results/semgrep.sarif
