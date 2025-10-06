@@ -153,13 +153,16 @@ class _ModernHomePageState extends State<ModernHomePage>
         vertical: 16,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha: 0.8),
         border: Border(
-          bottom: BorderSide(color: Colors.black.withOpacity(0.1), width: 0.5),
+          bottom: BorderSide(
+            color: Colors.black.withValues(alpha: 0.1),
+            width: 0.5,
+          ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 20,
             offset: const Offset(0, 1),
           ),
@@ -288,15 +291,15 @@ class _ModernHomePageState extends State<ModernHomePage>
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(25),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 20,
                       offset: const Offset(0, 4),
                     ),
@@ -361,7 +364,7 @@ class _ModernHomePageState extends State<ModernHomePage>
                                   shadowColor: Colors.transparent,
                                 ).copyWith(
                                   overlayColor: WidgetStateProperty.all(
-                                    Colors.white.withOpacity(0.1),
+                                    Colors.white.withValues(alpha: 0.1),
                                   ),
                                 ),
                             child: const Text(
@@ -380,7 +383,9 @@ class _ModernHomePageState extends State<ModernHomePage>
                             onPressed: () {},
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFF007AFF),
-                              backgroundColor: Colors.white.withOpacity(0.8),
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.8,
+                              ),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 32,
                                 vertical: 16,
@@ -389,7 +394,9 @@ class _ModernHomePageState extends State<ModernHomePage>
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               side: BorderSide(
-                                color: const Color(0xFF007AFF).withOpacity(0.3),
+                                color: const Color(
+                                  0xFF007AFF,
+                                ).withValues(alpha: 0.3),
                                 width: 1.5,
                               ),
                             ),
@@ -424,7 +431,7 @@ class _ModernHomePageState extends State<ModernHomePage>
                                 shadowColor: Colors.transparent,
                               ).copyWith(
                                 overlayColor: WidgetStateProperty.all(
-                                  Colors.white.withOpacity(0.1),
+                                  Colors.white.withValues(alpha: 0.1),
                                 ),
                               ),
                           child: const Text(
@@ -440,7 +447,9 @@ class _ModernHomePageState extends State<ModernHomePage>
                           onPressed: () {},
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFF007AFF),
-                            backgroundColor: Colors.white.withOpacity(0.8),
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.8,
+                            ),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 32,
                               vertical: 16,
@@ -449,7 +458,9 @@ class _ModernHomePageState extends State<ModernHomePage>
                               borderRadius: BorderRadius.circular(16),
                             ),
                             side: BorderSide(
-                              color: const Color(0xFF007AFF).withOpacity(0.3),
+                              color: const Color(
+                                0xFF007AFF,
+                              ).withValues(alpha: 0.3),
                               width: 1.5,
                             ),
                           ),
@@ -532,15 +543,15 @@ class _ModernHomePageState extends State<ModernHomePage>
                       margin: const EdgeInsets.only(bottom: 24),
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           width: 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 30,
                             offset: const Offset(0, 8),
                           ),
@@ -551,10 +562,14 @@ class _ModernHomePageState extends State<ModernHomePage>
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF007AFF).withOpacity(0.1),
+                              color: const Color(
+                                0xFF007AFF,
+                              ).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFF007AFF).withOpacity(0.2),
+                                color: const Color(
+                                  0xFF007AFF,
+                                ).withValues(alpha: 0.2),
                                 width: 1,
                               ),
                             ),
@@ -611,7 +626,7 @@ class _ModernHomePageState extends State<ModernHomePage>
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
+                                  color: Colors.black.withValues(alpha: 0.05),
                                   blurRadius: 20,
                                   offset: const Offset(0, 4),
                                 ),
@@ -675,15 +690,15 @@ class _ModernHomePageState extends State<ModernHomePage>
                       ),
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.8),
+                        color: Colors.white.withValues(alpha: 0.8),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withValues(alpha: 0.3),
                           width: 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 30,
                             offset: const Offset(0, 8),
                           ),
@@ -694,10 +709,14 @@ class _ModernHomePageState extends State<ModernHomePage>
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF007AFF).withOpacity(0.1),
+                              color: const Color(
+                                0xFF007AFF,
+                              ).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFF007AFF).withOpacity(0.2),
+                                color: const Color(
+                                  0xFF007AFF,
+                                ).withValues(alpha: 0.2),
                                 width: 1,
                               ),
                             ),
@@ -748,7 +767,7 @@ class _ModernHomePageState extends State<ModernHomePage>
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 20,
                               offset: const Offset(0, 4),
                             ),
@@ -826,10 +845,16 @@ class _ModernHomePageState extends State<ModernHomePage>
         vertical: isMobile ? 40 : 80,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFF007AFF).withOpacity(0.05),
+        color: const Color(0xFF007AFF).withValues(alpha: 0.05),
         border: Border(
-          top: BorderSide(color: Colors.black.withOpacity(0.05), width: 0.5),
-          bottom: BorderSide(color: Colors.black.withOpacity(0.05), width: 0.5),
+          top: BorderSide(
+            color: Colors.black.withValues(alpha: 0.05),
+            width: 0.5,
+          ),
+          bottom: BorderSide(
+            color: Colors.black.withValues(alpha: 0.05),
+            width: 0.5,
+          ),
         ),
       ),
       child: isMobile
@@ -951,9 +976,12 @@ class _ModernHomePageState extends State<ModernHomePage>
         vertical: isMobile ? 24 : 40,
       ),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha: 0.8),
         border: Border(
-          top: BorderSide(color: Colors.black.withOpacity(0.1), width: 0.5),
+          top: BorderSide(
+            color: Colors.black.withValues(alpha: 0.1),
+            width: 0.5,
+          ),
         ),
       ),
       child: Column(
