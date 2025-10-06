@@ -1,27 +1,49 @@
-name: Flutter CI/CD with CodeQL & Semgrep
+name: Flutter CI/CD with Security Scanning
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  FLUTTER_VERSION: '3.35.5'
+  DART_VERSION: '3.8.1'
 
 jobs:
-  flutter-analyze-build:
-    name: Flutter Analyze & Build
+  # -----------------------------
+  # Flutter Build & Test
+  # -----------------------------
+  flutter-build-test:
+    name: 🚀 Flutter Build & Test
     runs-on: ubuntu-latest
+    outputs:
+      commit-sha: ${{ steps.get-sha.outputs.sha }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Get commit SHA
+        id: get-sha
+        run: echo "sha=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.5' # Compatible with Dart 3.8.1
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Verify Flutter setup
         run: flutter --version
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
 
       - name: Install dependencies
         run: flutter pub get
@@ -29,22 +51,37 @@ jobs:
       - name: Analyze code
         run: flutter analyze
 
-      - name: Run tests
+      - name: Run tests with coverage
         run: flutter test --no-pub --coverage
 
-      - name: Build APK (optional)
+      - name: Build APK
         run: flutter build apk --release
 
-  semgrep-scan:
-    name: 🕵️ Semgrep Security Scan
+      - name: Build Web
+        run: flutter build web --release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-builds
+          path: |
+            build/web/
+            pubspec.yaml
+            pubspec.lock
+
+  # -----------------------------
+  # SAST Security Scan (Semgrep)
+  # -----------------------------
+  sast-scan:
+    name: 🕵️ SAST Security Scan
     runs-on: ubuntu-latest
-    needs: flutter-analyze-build
+    needs: flutter-build-test
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python (for Semgrep)
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -53,9 +90,144 @@ jobs:
         run: pip install semgrep
 
       - name: Run Semgrep scan
-        run: semgrep --config p/ci --sarif --output semgrep-results/semgrep.sarif || true
+        run: semgrep --config p/ci --sarif --output semgrep-results/semgrep.sarif
 
       - name: Upload SARIF to GitHub
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep-results/semgrep.sarif
+
+  # -----------------------------
+  # Dependency Security Scan (Trivy)
+  # -----------------------------
+  dependency-scan:
+    name: 🐍 Dependency Security Scan
+    runs-on: ubuntu-latest
+    needs: [flutter-build-test, sast-scan]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan dependencies with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          vuln-type: library
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-fs-results.sarif
+
+      - name: Upload Trivy FS SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs-results.sarif
+
+  # -----------------------------
+  # Docker Build, Scan & Push
+  # -----------------------------
+  docker-build-scan-push:
+    name: 🐳 Docker Build, Scan & Push
+    runs-on: ubuntu-latest
+    needs: [flutter-build-test, sast-scan]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Flutter build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-builds
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/flutter-app:${{ needs.flutter-build-test.outputs.commit-sha }}
+            ${{ secrets.DOCKER_USERNAME }}/flutter-app:latest
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/flutter-app:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/flutter-app:buildcache,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: image
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/flutter-app:${{ needs.flutter-build-test.outputs.commit-sha }}
+          format: sarif
+          output: trivy-image-results.sarif
+
+      - name: Upload Trivy Image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image-results.sarif
+
+  # -----------------------------
+  # DAST Security Scan (Placeholder)
+  # -----------------------------
+  dast-scan:
+    name: 🔍 DAST Security Scan (Placeholder)
+    runs-on: ubuntu-latest
+    needs: [flutter-build-test, sast-scan]
+    if: github.event_name == 'workflow_dispatch'  # Manual trigger only
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Placeholder for OWASP ZAP DAST
+        run: |
+          echo "DAST scanning placeholder"
+          echo "To implement:"
+          echo "1. Install OWASP ZAP"
+          echo "2. Start ZAP daemon"
+          echo "3. Run ZAP baseline scan against deployed app"
+          echo "4. Parse and report results"
+
+  # -----------------------------
+  # Security Summary
+  # -----------------------------
+  security-summary:
+    name: 📊 Security Summary
+    runs-on: ubuntu-latest
+    needs: [sast-scan, dependency-scan, docker-build-scan-push]
+    if: always()
+
+    steps:
+      - name: Security Scan Results
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Scan Type | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| SAST (Semgrep) | ${{ needs.sast-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency (Trivy FS) | ${{ needs.dependency-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker (Trivy Image) | ${{ needs.docker-build-scan-push.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Performance Optimizations Applied:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Flutter/Dart dependency caching" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Artifact reuse for Docker builds" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Combined Trivy install/scan steps" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Merged Docker build/scan/push jobs" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Aggressive Docker layer caching" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Multi-platform builds (AMD64/ARM64)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Parameterized Docker username" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Manual DAST trigger available" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** Docker username is now automatically taken from DOCKER_USERNAME secret." >> $GITHUB_STEP_SUMMARY
