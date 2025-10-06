@@ -7,6 +7,10 @@ on:
     branches: [ main ]
   workflow_dispatch:  # Allow manual triggers
 
+permissions:
+  security-events: write
+  contents: read
+
 env:
   FLUTTER_VERSION: '3.35.5'
   DART_VERSION: '3.8.1'
