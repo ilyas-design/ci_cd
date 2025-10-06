@@ -12,35 +12,46 @@ jobs:
 
     steps:
       # ------------------------------------------------------------
-      # 1. Checkout the code from your repository
+      # 1. Checkout code
       # ------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------
-      # 2. Setup Flutter environment
+      # 2. Set up Flutter (version 3.27.0 → Dart 3.8.1)
       # ------------------------------------------------------------
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.0'   # Update to your version
+          flutter-version: '3.27.0'
 
       # ------------------------------------------------------------
-      # 3. Flutter dependencies and tests
+      # 3. Confirm Flutter & Dart versions
+      # ------------------------------------------------------------
+      - name: Check Flutter & Dart versions
+        run: |
+          flutter --version
+          dart --version
+
+      # ------------------------------------------------------------
+      # 4. Install Flutter dependencies
       # ------------------------------------------------------------
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Run Flutter analyzer (static analysis)
+      # ------------------------------------------------------------
+      # 5. Run Flutter analyzer & tests
+      # ------------------------------------------------------------
+      - name: Flutter analyze
         run: flutter analyze
 
-      - name: Run Flutter tests
+      - name: Flutter tests
         run: flutter test --coverage
 
       # ============================================================
-      # === SAST (Static Application Security Testing) - Semgrep ===
+      # === 6. SAST (Semgrep) ====================================
       # ============================================================
-      - name: Set up Python (required for Semgrep)
+      - name: Set up Python for Semgrep
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
@@ -53,23 +64,23 @@ jobs:
           mkdir -p semgrep-results
           semgrep ci --sarif --output semgrep-results/semgrep.sarif
 
-      - name: Upload Semgrep SARIF results to GitHub Security tab
+      - name: Upload Semgrep SARIF to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep-results/semgrep.sarif
 
-      - name: Upload Semgrep results as artifact (for ISO27001 audit)
+      - name: Upload Semgrep artifacts
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
           path: semgrep-results/
 
       # ============================================================
-      # === Dependency scanning (SCA) with Trivy ===================
+      # === 7. Dependency scanning with Trivy ====================
       # ============================================================
 
-      # --- Python dependencies scan (if any Python deps exist) ---
-      - name: Run Trivy on Python dependencies
+      # --- Python dependencies scan ---
+      - name: Trivy scan for Python deps
         uses: aquasecurity/trivy-action@0.20.0
         with:
           scan-type: 'fs'
@@ -78,11 +89,11 @@ jobs:
           output: 'trivy-python.sarif'
           severity: 'CRITICAL,HIGH'
 
-      # --- Docker image dependency scan ---
+      # --- Docker image scan ---
       - name: Build Docker image for scanning
         run: docker build -t flutter-app .
 
-      - name: Run Trivy on Docker image
+      - name: Trivy scan Docker image
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: 'flutter-app'
@@ -90,7 +101,7 @@ jobs:
           output: 'trivy-docker.sarif'
           severity: 'CRITICAL,HIGH'
 
-      # --- Upload Trivy scan results ---
+      # --- Upload Trivy results ---
       - name: Upload Trivy SARIF (Python)
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -110,14 +121,12 @@ jobs:
             trivy-docker.sarif
 
       # ============================================================
-      # === DAST (Dynamic Application Security Testing) ============
+      # === 8. DAST (Dynamic Application Security Testing) ========
       # ============================================================
-
-      # Placeholder: In practice, you’d deploy to a test env and scan with OWASP ZAP
-      - name: Run basic OWASP ZAP baseline scan
+      - name: Run OWASP ZAP baseline scan (placeholder)
         uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'http://localhost:8080'   # Adjust if your app runs in a container
+          target: 'http://localhost:8080'
           cmd_options: '-r zap-report.html'
 
       - name: Upload DAST report
@@ -127,9 +136,8 @@ jobs:
           path: zap-report.html
 
       # ============================================================
-      # === Docker build and export ================================
+      # === 9. Docker build & export ==============================
       # ============================================================
-
       - name: Build Docker image for deployment
         run: docker build -t flutter-app:latest .
 
@@ -143,8 +151,7 @@ jobs:
           path: flutter-app.tar
 
       # ============================================================
-      # === End of Pipeline =======================================
+      # === 10. Pipeline summary =================================
       # ============================================================
-
       - name: Summary
-        run: echo "✅ All security checks and build steps completed successfully."
+        run: echo "✅ All security checks, builds, and artifacts completed successfully."
