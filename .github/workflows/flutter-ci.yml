@@ -41,13 +41,16 @@ jobs:
       - name: Verify Flutter setup
         run: flutter --version
 
-      - name: Cache Flutter dependencies
+      - name: Cache Flutter SDK and dependencies
         uses: actions/cache@v3
         with:
-          path: ~/.pub-cache
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          path: |
+            ~/.pub-cache
+            ~/flutter
+          key: ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
           restore-keys: |
-            ${{ runner.os }}-pub-
+            ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-
+            ${{ runner.os }}-flutter-
 
       - name: Install dependencies
         run: flutter pub get
@@ -59,10 +62,10 @@ jobs:
         run: flutter test --no-pub --coverage
 
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi --shrink
 
       - name: Build Web
-        run: flutter build web --release
+        run: flutter build web --release --web-renderer html --dart-define=FLUTTER_WEB_USE_SKIA=false
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
