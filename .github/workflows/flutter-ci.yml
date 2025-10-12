@@ -107,7 +107,7 @@ jobs:
   dependency-scan:
     name: 🐍 Dependency Security Scan
     runs-on: ubuntu-latest
-    needs: [flutter-build-test, sast-scan]
+    needs: flutter-build-test
 
     steps:
       - name: Checkout repository
@@ -134,7 +134,7 @@ jobs:
   docker-build-scan-push:
     name: 🐳 Docker Build, Scan & Push
     runs-on: ubuntu-latest
-    needs: [flutter-build-test, sast-scan]
+    needs: [flutter-build-test, sast-scan, dependency-scan]
 
     steps:
       - name: Checkout repository
