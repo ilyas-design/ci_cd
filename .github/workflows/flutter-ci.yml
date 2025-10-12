@@ -70,7 +70,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: flutter-builds-${{ github.sha }}
+          name: flutter-builds-${{ steps.get-sha.outputs.sha }}
           path: |
             build/web/
             build/app/outputs/flutter-apk/
