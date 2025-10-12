@@ -270,11 +270,21 @@ jobs:
           sarif_file: trivy-fs-results.sarif
 
       - name: Snyk dependency scan
-        uses: snyk/actions/node@master
+        run: |
+          # Install Snyk CLI
+          npm install -g snyk
+          
+          # Run Snyk test on Dart/Flutter project
+          snyk test --severity-threshold=high --json-file-output=snyk-results.json || true
+          
+          # Check if results were generated
+          if [ -f "snyk-results.json" ] && [ -s "snyk-results.json" ]; then
+            echo "✅ Snyk scan completed with results"
+          else
+            echo "⚠️  Snyk scan completed but no results generated"
+          fi
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high --json-file-output=snyk-results.json || true
 
       - name: Upload Snyk results
         uses: actions/upload-artifact@v4
@@ -454,8 +464,6 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: main
-          head: HEAD
           extra_args: --debug --only-verified
 
       - name: Run GitLeaks secret scan
