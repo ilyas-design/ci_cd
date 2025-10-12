@@ -477,10 +477,16 @@ jobs:
           gitleaks detect --source . --report-format json --report-path gitleaks-results.json || true
           
           # Check for secrets
-          if [ -f "gitleaks-results.json" ] && [ -s "gitleaks-results.json" ]; then
-            echo "❌ Secrets detected by GitLeaks:"
-            cat gitleaks-results.json
-            exit 1
+          if [ -f "gitleaks-results.json" ]; then
+            # Check if file contains actual secrets (not just empty array)
+            SECRET_COUNT=$(jq length gitleaks-results.json 2>/dev/null || echo "0")
+            if [ "$SECRET_COUNT" -gt 0 ]; then
+              echo "❌ Secrets detected by GitLeaks:"
+              cat gitleaks-results.json
+              exit 1
+            else
+              echo "✅ No secrets detected by GitLeaks"
+            fi
           else
             echo "✅ No secrets detected by GitLeaks"
           fi
