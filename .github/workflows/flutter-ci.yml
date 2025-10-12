@@ -55,11 +55,59 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze code
-        run: flutter analyze
+      - name: Analyze code with quality gates
+        run: |
+          # Run Flutter analyze and capture output
+          flutter analyze --no-pub > analysis_output.txt 2>&1 || ANALYSIS_EXIT_CODE=$?
+          
+          # Display analysis results
+          cat analysis_output.txt
+          
+          # Check for critical issues (errors)
+          if grep -q "error •" analysis_output.txt; then
+            echo "❌ Critical analysis errors found. Build will fail."
+            exit 1
+          fi
+          
+          # Check for warnings (optional - can be made strict)
+          WARNING_COUNT=$(grep -c "warning •" analysis_output.txt || echo "0")
+          echo "Analysis warnings found: $WARNING_COUNT"
+          
+          # Optional: Fail on too many warnings (uncomment to enable)
+          # MAX_WARNINGS=10
+          # if [ "$WARNING_COUNT" -gt "$MAX_WARNINGS" ]; then
+          #   echo "❌ Too many warnings ($WARNING_COUNT > $MAX_WARNINGS). Build will fail."
+          #   exit 1
+          # fi
+          
+          echo "✅ Code analysis passed quality gates"
 
       - name: Run tests with coverage
         run: flutter test --no-pub --coverage
+
+      - name: Check test coverage threshold
+        run: |
+          # Install lcov for coverage analysis
+          sudo apt-get update && sudo apt-get install -y lcov
+          
+          # Generate coverage report
+          lcov --capture --directory coverage --output-file coverage/lcov.info
+          lcov --remove coverage/lcov.info '**/*.g.dart' '**/*.freezed.dart' '**/generated_plugin_registrant.dart' --output-file coverage/lcov.info
+          
+          # Calculate coverage percentage
+          COVERAGE=$(lcov --summary coverage/lcov.info | grep -o '[0-9.]*%' | head -1 | sed 's/%//')
+          echo "Current test coverage: ${COVERAGE}%"
+          
+          # Set minimum coverage threshold (adjust as needed)
+          MIN_COVERAGE=80
+          
+          # Check if coverage meets threshold
+          if (( $(echo "$COVERAGE < $MIN_COVERAGE" | bc -l) )); then
+            echo "❌ Test coverage ${COVERAGE}% is below minimum threshold of ${MIN_COVERAGE}%"
+            exit 1
+          else
+            echo "✅ Test coverage ${COVERAGE}% meets minimum threshold of ${MIN_COVERAGE}%"
+          fi
 
       - name: Build APK
         run: flutter build apk --release --split-per-abi --shrink
@@ -143,6 +191,30 @@ jobs:
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy-fs-results.sarif
+
+      - name: License compliance check
+        run: |
+          echo "🔍 Checking dependency licenses..."
+          
+          # Install license checker
+          dart pub global activate license_checker
+          
+          # Generate license report
+          dart pub global run license_checker --json > license_report.json || true
+          
+          # Check for problematic licenses (adjust as needed)
+          PROBLEMATIC_LICENSES=("GPL" "AGPL" "Copyleft")
+          
+          for license in "${PROBLEMATIC_LICENSES[@]}"; do
+            if grep -qi "$license" license_report.json; then
+              echo "⚠️  Found potentially problematic license: $license"
+              echo "Review the following packages:"
+              grep -i "$license" license_report.json
+            fi
+          done
+          
+          echo "✅ License compliance check completed"
+          echo "📄 License report generated: license_report.json"
 
       - name: Upload Trivy FS SARIF
         uses: github/codeql-action/upload-sarif@v3
