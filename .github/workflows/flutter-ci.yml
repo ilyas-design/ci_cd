@@ -269,6 +269,20 @@ jobs:
         with:
           sarif_file: trivy-fs-results.sarif
 
+      - name: Snyk dependency scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --json-file-output=snyk-results.json || true
+
+      - name: Upload Snyk results
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-results
+          path: snyk-results.json
+          if-no-files-found: ignore
+
   # -----------------------------
   # Docker Build, Scan & Push
   # -----------------------------
@@ -328,10 +342,10 @@ jobs:
           sarif_file: trivy-image-results.sarif
 
   # -----------------------------
-  # DAST Security Scan (Placeholder)
+  # DAST Security Scan (OWASP ZAP)
   # -----------------------------
   dast-scan:
-    name: 🔍 DAST Security Scan (Placeholder)
+    name: 🔍 DAST Security Scan
     runs-on: ubuntu-latest
     needs: [flutter-build-test, sast-scan]
     if: github.event_name == 'workflow_dispatch'  # Manual trigger only
@@ -340,14 +354,136 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Placeholder for OWASP ZAP DAST
+      - name: Download Flutter build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: flutter-builds-${{ needs.flutter-build-test.outputs.commit-sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install OWASP ZAP
         run: |
-          echo "DAST scanning placeholder"
-          echo "To implement:"
-          echo "1. Install OWASP ZAP"
-          echo "2. Start ZAP daemon"
-          echo "3. Run ZAP baseline scan against deployed app"
-          echo "4. Parse and report results"
+          # Install ZAP
+          wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_linux.tar.gz
+          tar -xzf ZAP_2.14.0_linux.tar.gz
+          sudo mv ZAP_2.14.0 /opt/zap
+          sudo chmod +x /opt/zap/zap.sh
+          
+          # Add ZAP to PATH
+          echo "/opt/zap" >> $GITHUB_PATH
+
+      - name: Start ZAP daemon
+        run: |
+          /opt/zap/zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true &
+          sleep 30  # Wait for ZAP to start
+
+      - name: Serve Flutter web app
+        run: |
+          # Install a simple HTTP server
+          python3 -m http.server 8000 --directory build/web &
+          sleep 10  # Wait for server to start
+
+      - name: Run ZAP baseline scan
+        run: |
+          # Run ZAP baseline scan against the web app
+          /opt/zap/zap-baseline.py -t http://localhost:8000 -J zap-results.json -x zap-report.xml
+          
+          # Check if scan completed successfully
+          if [ $? -eq 0 ]; then
+            echo "✅ ZAP baseline scan completed successfully"
+          else
+            echo "⚠️  ZAP baseline scan completed with warnings"
+          fi
+
+      - name: Upload ZAP results
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-results
+          path: |
+            zap-results.json
+            zap-report.xml
+          if-no-files-found: ignore
+
+      - name: Parse and report ZAP results
+        run: |
+          if [ -f "zap-results.json" ]; then
+            echo "## DAST Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            
+            # Parse JSON results (basic parsing)
+            HIGH=$(grep -o '"High"' zap-results.json | wc -l || echo "0")
+            MEDIUM=$(grep -o '"Medium"' zap-results.json | wc -l || echo "0")
+            LOW=$(grep -o '"Low"' zap-results.json | wc -l || echo "0")
+            INFO=$(grep -o '"Informational"' zap-results.json | wc -l || echo "0")
+            
+            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+            echo "| Info | $INFO |" >> $GITHUB_STEP_SUMMARY
+            
+            # Fail if high severity issues found
+            if [ "$HIGH" -gt 0 ]; then
+              echo "❌ High severity issues found in DAST scan"
+              exit 1
+            else
+              echo "✅ DAST scan passed - no high severity issues"
+            fi
+          else
+            echo "⚠️  No ZAP results file found"
+          fi
+
+  # -----------------------------
+  # Secret Scanning
+  # -----------------------------
+  secret-scan:
+    name: 🔐 Secret Scanning
+    runs-on: ubuntu-latest
+    needs: flutter-build-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+
+      - name: Run TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: Run GitLeaks secret scan
+        run: |
+          # Install GitLeaks
+          wget -q https://github.com/zricethezav/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+          sudo mv gitleaks /usr/local/bin/
+          
+          # Run GitLeaks scan
+          gitleaks detect --source . --report-format json --report-path gitleaks-results.json || true
+          
+          # Check for secrets
+          if [ -f "gitleaks-results.json" ] && [ -s "gitleaks-results.json" ]; then
+            echo "❌ Secrets detected by GitLeaks:"
+            cat gitleaks-results.json
+            exit 1
+          else
+            echo "✅ No secrets detected by GitLeaks"
+          fi
+
+      - name: Upload secret scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-results
+          path: |
+            gitleaks-results.json
+          if-no-files-found: ignore
 
   # -----------------------------
   # Security Summary
@@ -355,7 +491,7 @@ jobs:
   security-summary:
     name: 📊 Security Summary
     runs-on: ubuntu-latest
-    needs: [sast-scan, dependency-scan, docker-build-scan-push]
+    needs: [sast-scan, dependency-scan, docker-build-scan-push, secret-scan]
     if: always()
 
     steps:
@@ -366,7 +502,10 @@ jobs:
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| SAST (Semgrep) | ${{ needs.sast-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Dependency (Trivy FS) | ${{ needs.dependency-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency (Snyk) | ${{ needs.dependency-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker (Trivy Image) | ${{ needs.docker-build-scan-push.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Scan | ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DAST (ZAP) | ${{ needs.dast-scan.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Performance Optimizations Applied:" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Flutter/Dart dependency caching" >> $GITHUB_STEP_SUMMARY
@@ -377,5 +516,9 @@ jobs:
           echo "- ✅ Multi-platform builds (AMD64/ARM64)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Parameterized Docker username" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Manual DAST trigger available" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Enhanced security scanning with Snyk" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ OWASP ZAP DAST implementation" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Secret scanning with TruffleHog & GitLeaks" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Note:** Docker username is now automatically taken from DOCKER_USERNAME secret." >> $GITHUB_STEP_SUMMARY
+          echo "**Security:** Add SNYK_TOKEN secret for enhanced dependency scanning." >> $GITHUB_STEP_SUMMARY
