@@ -70,11 +70,13 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: flutter-builds
+          name: flutter-builds-${{ github.sha }}
           path: |
             build/web/
+            build/app/outputs/flutter-apk/
             pubspec.yaml
             pubspec.lock
+          retention-days: 30
 
   # -----------------------------
   # SAST Security Scan (Semgrep)
@@ -92,6 +94,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+
+      - name: Cache Semgrep rules
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/semgrep
+          key: ${{ runner.os }}-semgrep-rules-${{ hashFiles('**/.semgrepignore') }}
+          restore-keys: |
+            ${{ runner.os }}-semgrep-rules-
 
       - name: Install Semgrep
         run: pip install semgrep
@@ -115,6 +125,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/trivy
+          key: ${{ runner.os }}-trivy-db-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-trivy-db-
 
       - name: Scan dependencies with Trivy
         uses: aquasecurity/trivy-action@master
@@ -146,7 +164,7 @@ jobs:
       - name: Download Flutter build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: flutter-builds
+          name: flutter-builds-${{ needs.flutter-build-test.outputs.commit-sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -166,12 +184,15 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/flutter-app:${{ needs.flutter-build-test.outputs.commit-sha }}
             ${{ secrets.DOCKER_USERNAME }}/flutter-app:latest
           cache-from: |
-            type=gha
+            type=gha,scope=flutter-app
             type=registry,ref=${{ secrets.DOCKER_USERNAME }}/flutter-app:buildcache
+            type=registry,ref=${{ secrets.DOCKER_USERNAME }}/flutter-app:latest
           cache-to: |
-            type=gha,mode=max
+            type=gha,mode=max,scope=flutter-app
             type=registry,ref=${{ secrets.DOCKER_USERNAME }}/flutter-app:buildcache,mode=max
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
       - name: Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@master
