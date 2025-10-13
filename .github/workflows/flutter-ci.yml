@@ -376,19 +376,80 @@ jobs:
 
       - name: Install OWASP ZAP
         run: |
-          # Install ZAP
+          set -e  # Exit on any error
+          
+          echo "🔧 Installing OWASP ZAP..."
+          
+          # Clean up any existing installation
+          sudo rm -rf /opt/zap ZAP_2.14.0*
+          
+          # Download ZAP
+          echo "📥 Downloading ZAP..."
           wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_linux.tar.gz
+          
+          # Verify download
+          if [ ! -f "ZAP_2.14.0_linux.tar.gz" ]; then
+            echo "❌ Failed to download ZAP"
+            exit 1
+          fi
+          
+          # Extract ZAP
+          echo "📦 Extracting ZAP..."
           tar -xzf ZAP_2.14.0_linux.tar.gz
+          
+          # Verify extraction
+          if [ ! -d "ZAP_2.14.0" ]; then
+            echo "❌ Failed to extract ZAP"
+            exit 1
+          fi
+          
+          # Install ZAP
+          echo "🔧 Installing ZAP to /opt/zap..."
           sudo mv ZAP_2.14.0 /opt/zap
           sudo chmod +x /opt/zap/zap.sh
           
+          # Verify installation
+          if [ ! -f "/opt/zap/zap.sh" ]; then
+            echo "❌ ZAP installation failed"
+            exit 1
+          fi
+          
           # Add ZAP to PATH
           echo "/opt/zap" >> $GITHUB_PATH
+          
+          # Verify ZAP can run
+          echo "✅ Testing ZAP installation..."
+          /opt/zap/zap.sh -version || echo "⚠️  ZAP version check failed, but continuing..."
+          
+          echo "✅ ZAP installation completed successfully"
 
       - name: Start ZAP daemon
         run: |
+          echo "🚀 Starting ZAP daemon..."
+          
+          # Kill any existing ZAP processes
+          sudo pkill -f zap.sh || true
+          
+          # Start ZAP daemon
           /opt/zap/zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true &
-          sleep 30  # Wait for ZAP to start
+          ZAP_PID=$!
+          
+          # Wait for ZAP to start and verify it's running
+          echo "⏳ Waiting for ZAP to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/JSON/core/view/version/ > /dev/null 2>&1; then
+              echo "✅ ZAP daemon started successfully"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+          
+          # Final check
+          if ! curl -s http://localhost:8080/JSON/core/view/version/ > /dev/null 2>&1; then
+            echo "❌ ZAP daemon failed to start"
+            exit 1
+          fi
 
       - name: Serve Flutter web app
         run: |
@@ -398,14 +459,49 @@ jobs:
 
       - name: Run ZAP baseline scan
         run: |
-          # Run ZAP baseline scan against the web app
-          /opt/zap/zap-baseline.py -t http://localhost:8000 -J zap-results.json -x zap-report.xml
+          echo "🔍 Running ZAP baseline scan..."
           
-          # Check if scan completed successfully
-          if [ $? -eq 0 ]; then
+          # Verify web app is running
+          if ! curl -s http://localhost:8000 > /dev/null 2>&1; then
+            echo "❌ Web app is not accessible at http://localhost:8000"
+            exit 1
+          fi
+          
+          # Verify ZAP is still running
+          if ! curl -s http://localhost:8080/JSON/core/view/version/ > /dev/null 2>&1; then
+            echo "❌ ZAP daemon is not running"
+            exit 1
+          fi
+          
+          # Run ZAP baseline scan
+          echo "🚀 Starting ZAP baseline scan against http://localhost:8000..."
+          /opt/zap/zap-baseline.py -t http://localhost:8000 -J zap-results.json -x zap-report.xml -r zap-report.html
+          
+          # Check scan results
+          SCAN_EXIT_CODE=$?
+          
+          if [ $SCAN_EXIT_CODE -eq 0 ]; then
             echo "✅ ZAP baseline scan completed successfully"
-          else
+          elif [ $SCAN_EXIT_CODE -eq 1 ]; then
             echo "⚠️  ZAP baseline scan completed with warnings"
+          elif [ $SCAN_EXIT_CODE -eq 2 ]; then
+            echo "❌ ZAP baseline scan failed"
+            exit 1
+          else
+            echo "⚠️  ZAP baseline scan completed with exit code: $SCAN_EXIT_CODE"
+          fi
+          
+          # Verify results files were created
+          if [ -f "zap-results.json" ]; then
+            echo "✅ ZAP results JSON file created"
+          else
+            echo "⚠️  ZAP results JSON file not found"
+          fi
+          
+          if [ -f "zap-report.xml" ]; then
+            echo "✅ ZAP XML report created"
+          else
+            echo "⚠️  ZAP XML report not found"
           fi
 
       - name: Upload ZAP results
@@ -415,6 +511,7 @@ jobs:
           path: |
             zap-results.json
             zap-report.xml
+            zap-report.html
           if-no-files-found: ignore
 
       - name: Parse and report ZAP results
