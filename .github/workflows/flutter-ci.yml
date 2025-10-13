@@ -628,9 +628,21 @@ jobs:
             exit 1
           fi
           
+          # Download zap-baseline.py script
+          echo "📥 Downloading zap-baseline.py script..."
+          curl -s -o zap-baseline.py https://raw.githubusercontent.com/zaproxy/zaproxy/main/zap/src/main/python/zap-baseline.py
+          
+          if [ ! -f "zap-baseline.py" ]; then
+            echo "❌ Failed to download zap-baseline.py"
+            exit 1
+          fi
+          
+          # Make script executable
+          chmod +x zap-baseline.py
+          
           # Run ZAP baseline scan
           echo "🚀 Starting ZAP baseline scan against http://localhost:8000..."
-          /opt/zap/zap-baseline.py -t http://localhost:8000 -J zap-results.json -x zap-report.xml -r zap-report.html
+          python3 zap-baseline.py -t http://localhost:8000 -J zap-results.json -x zap-report.xml -r zap-report.html
           
           # Check scan results
           SCAN_EXIT_CODE=$?
@@ -667,6 +679,7 @@ jobs:
             zap-results.json
             zap-report.xml
             zap-report.html
+            zap-baseline.py
           if-no-files-found: ignore
 
       - name: Parse and report ZAP results
