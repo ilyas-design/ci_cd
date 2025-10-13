@@ -374,54 +374,147 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Install required tools
+        run: |
+          echo "🔧 Installing required tools..."
+          sudo apt-get update
+          sudo apt-get install -y wget curl tar
+          echo "✅ Required tools installed"
+
       - name: Install OWASP ZAP
         run: |
           set -e  # Exit on any error
           
           echo "🔧 Installing OWASP ZAP..."
           
-          # Clean up any existing installation
-          sudo rm -rf /opt/zap ZAP_2.14.0*
+          # Define variables
+          ZAP_VERSION="2.14.0"
+          ZAP_DOWNLOAD_URL="https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_linux.tar.gz"
+          ZAP_INSTALL_DIR="/opt/zap"
           
-          # Download ZAP
+          # Clean up any existing installation
+          sudo rm -rf "${ZAP_INSTALL_DIR}" "ZAP_${ZAP_VERSION}_linux.tar.gz"
+          
+          # Verify Java is available
+          echo "☕ Verifying Java installation..."
+          java -version || {
+            echo "❌ Java is not available. ZAP requires Java to run."
+            exit 1
+          }
+          
+          # Debug information
+          echo "🔍 Debug information:"
+          echo "  - Working directory: $(pwd)"
+          echo "  - Available disk space: $(df -h .)"
+          echo "  - Network connectivity test:"
+          curl -s --connect-timeout 10 https://github.com > /dev/null && echo "    ✅ GitHub is reachable" || echo "    ❌ GitHub is not reachable"
+          
+          # Download ZAP with retry logic and multiple URLs
           echo "📥 Downloading ZAP..."
-          wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_linux.tar.gz
+          
+          # Try multiple download URLs
+          DOWNLOAD_URLS=(
+            "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_linux.tar.gz"
+            "https://github.com/zaproxy/zaproxy/releases/latest/download/ZAP_${ZAP_VERSION}_linux.tar.gz"
+            "https://github.com/zaproxy/zaproxy/releases/download/v2.13.0/ZAP_2.13.0_linux.tar.gz"
+          )
+          
+          DOWNLOAD_SUCCESS=false
+          
+          for url in "${DOWNLOAD_URLS[@]}"; do
+            echo "🔗 Trying URL: $url"
+            for attempt in 1 2 3; do
+              echo "Attempt $attempt/3..."
+              if wget -q --timeout=30 --tries=3 -O "ZAP_${ZAP_VERSION}_linux.tar.gz" "$url"; then
+                echo "✅ Download successful from $url"
+                DOWNLOAD_SUCCESS=true
+                break 2
+              else
+                echo "⚠️  Download attempt $attempt failed for $url"
+                if [ $attempt -eq 3 ]; then
+                  echo "❌ All attempts failed for $url"
+                fi
+                sleep 2
+              fi
+            done
+          done
+          
+          if [ "$DOWNLOAD_SUCCESS" = false ]; then
+            echo "❌ All download URLs failed"
+            echo "🔍 Trying with curl as final fallback..."
+            if curl -L -o "ZAP_${ZAP_VERSION}_linux.tar.gz" "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_linux.tar.gz"; then
+              echo "✅ Curl download successful"
+              DOWNLOAD_SUCCESS=true
+            else
+              echo "❌ All download methods failed"
+              exit 1
+            fi
+          fi
           
           # Verify download
-          if [ ! -f "ZAP_2.14.0_linux.tar.gz" ]; then
-            echo "❌ Failed to download ZAP"
+          if [ ! -f "ZAP_${ZAP_VERSION}_linux.tar.gz" ]; then
+            echo "❌ Downloaded file not found"
+            exit 1
+          fi
+          
+          # Check file size (should be > 100MB)
+          FILE_SIZE=$(stat -c%s "ZAP_${ZAP_VERSION}_linux.tar.gz")
+          if [ $FILE_SIZE -lt 104857600 ]; then
+            echo "❌ Downloaded file seems too small (${FILE_SIZE} bytes)"
             exit 1
           fi
           
           # Extract ZAP
           echo "📦 Extracting ZAP..."
-          tar -xzf ZAP_2.14.0_linux.tar.gz
-          
-          # Verify extraction
-          if [ ! -d "ZAP_2.14.0" ]; then
+          if ! tar -xzf "ZAP_${ZAP_VERSION}_linux.tar.gz"; then
             echo "❌ Failed to extract ZAP"
             exit 1
           fi
           
+          # Verify extraction
+          if [ ! -d "ZAP_${ZAP_VERSION}" ]; then
+            echo "❌ Extracted directory not found"
+            exit 1
+          fi
+          
           # Install ZAP
-          echo "🔧 Installing ZAP to /opt/zap..."
-          sudo mv ZAP_2.14.0 /opt/zap
-          sudo chmod +x /opt/zap/zap.sh
+          echo "🔧 Installing ZAP to ${ZAP_INSTALL_DIR}..."
+          if ! sudo mv "ZAP_${ZAP_VERSION}" "${ZAP_INSTALL_DIR}"; then
+            echo "❌ Failed to move ZAP to ${ZAP_INSTALL_DIR}"
+            exit 1
+          fi
+          
+          # Make zap.sh executable
+          echo "🔑 Setting execute permissions..."
+          if ! sudo chmod +x "${ZAP_INSTALL_DIR}/zap.sh"; then
+            echo "❌ Failed to set execute permissions"
+            exit 1
+          fi
           
           # Verify installation
-          if [ ! -f "/opt/zap/zap.sh" ]; then
-            echo "❌ ZAP installation failed"
+          if [ ! -f "${ZAP_INSTALL_DIR}/zap.sh" ]; then
+            echo "❌ ZAP installation failed - zap.sh not found"
             exit 1
           fi
           
           # Add ZAP to PATH
-          echo "/opt/zap" >> $GITHUB_PATH
+          echo "🛠️ Adding ZAP to PATH..."
+          echo "${ZAP_INSTALL_DIR}" >> $GITHUB_PATH
           
           # Verify ZAP can run
           echo "✅ Testing ZAP installation..."
-          /opt/zap/zap.sh -version || echo "⚠️  ZAP version check failed, but continuing..."
-          
-          echo "✅ ZAP installation completed successfully"
+          if "${ZAP_INSTALL_DIR}/zap.sh" -version; then
+            echo "✅ ZAP installation completed successfully"
+          else
+            echo "⚠️  ZAP version check failed, but installation appears complete"
+            echo "✅ ZAP installation completed (with warnings)"
+          fi
 
       - name: Start ZAP daemon
         run: |
