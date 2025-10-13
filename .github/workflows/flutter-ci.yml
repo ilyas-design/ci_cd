@@ -393,9 +393,8 @@ jobs:
           
           echo "🔧 Installing OWASP ZAP..."
           
-          # Define variables
-          ZAP_VERSION="2.14.0"
-          ZAP_DOWNLOAD_URL="https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_linux.tar.gz"
+          # Define variables - using a known working version
+          ZAP_VERSION="2.13.0"
           ZAP_INSTALL_DIR="/opt/zap"
           
           # Clean up any existing installation
@@ -418,11 +417,11 @@ jobs:
           # Download ZAP with retry logic and multiple URLs
           echo "📥 Downloading ZAP..."
           
-          # Try multiple download URLs
+          # Try multiple download URLs with known working versions
           DOWNLOAD_URLS=(
-            "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_linux.tar.gz"
-            "https://github.com/zaproxy/zaproxy/releases/latest/download/ZAP_${ZAP_VERSION}_linux.tar.gz"
             "https://github.com/zaproxy/zaproxy/releases/download/v2.13.0/ZAP_2.13.0_linux.tar.gz"
+            "https://github.com/zaproxy/zaproxy/releases/download/v2.12.0/ZAP_2.12.0_linux.tar.gz"
+            "https://github.com/zaproxy/zaproxy/releases/download/v2.11.1/ZAP_2.11.1_linux.tar.gz"
           )
           
           DOWNLOAD_SUCCESS=false
@@ -432,9 +431,18 @@ jobs:
             for attempt in 1 2 3; do
               echo "Attempt $attempt/3..."
               if wget -q --timeout=30 --tries=3 -O "ZAP_${ZAP_VERSION}_linux.tar.gz" "$url"; then
-                echo "✅ Download successful from $url"
-                DOWNLOAD_SUCCESS=true
-                break 2
+                # Check if download was actually successful by file size
+                FILE_SIZE=$(stat -c%s "ZAP_${ZAP_VERSION}_linux.tar.gz" 2>/dev/null || echo "0")
+                echo "📊 Downloaded file size: ${FILE_SIZE} bytes"
+                
+                if [ $FILE_SIZE -gt 104857600 ]; then  # > 100MB
+                  echo "✅ Download successful from $url (${FILE_SIZE} bytes)"
+                  DOWNLOAD_SUCCESS=true
+                  break 2
+                else
+                  echo "⚠️  Download too small (${FILE_SIZE} bytes), trying next URL..."
+                  rm -f "ZAP_${ZAP_VERSION}_linux.tar.gz"
+                fi
               else
                 echo "⚠️  Download attempt $attempt failed for $url"
                 if [ $attempt -eq 3 ]; then
@@ -446,12 +454,30 @@ jobs:
           done
           
           if [ "$DOWNLOAD_SUCCESS" = false ]; then
-            echo "❌ All download URLs failed"
+            echo "❌ All wget downloads failed"
             echo "🔍 Trying with curl as final fallback..."
-            if curl -L -o "ZAP_${ZAP_VERSION}_linux.tar.gz" "https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/ZAP_${ZAP_VERSION}_linux.tar.gz"; then
-              echo "✅ Curl download successful"
-              DOWNLOAD_SUCCESS=true
-            else
+            
+            # Try curl with the same URLs
+            for url in "${DOWNLOAD_URLS[@]}"; do
+              echo "🔗 Trying curl with: $url"
+              if curl -L -o "ZAP_${ZAP_VERSION}_linux.tar.gz" "$url"; then
+                FILE_SIZE=$(stat -c%s "ZAP_${ZAP_VERSION}_linux.tar.gz" 2>/dev/null || echo "0")
+                echo "📊 Curl downloaded file size: ${FILE_SIZE} bytes"
+                
+                if [ $FILE_SIZE -gt 104857600 ]; then  # > 100MB
+                  echo "✅ Curl download successful from $url (${FILE_SIZE} bytes)"
+                  DOWNLOAD_SUCCESS=true
+                  break
+                else
+                  echo "⚠️  Curl download too small (${FILE_SIZE} bytes), trying next URL..."
+                  rm -f "ZAP_${ZAP_VERSION}_linux.tar.gz"
+                fi
+              else
+                echo "⚠️  Curl download failed for $url"
+              fi
+            done
+            
+            if [ "$DOWNLOAD_SUCCESS" = false ]; then
               echo "❌ All download methods failed"
               exit 1
             fi
