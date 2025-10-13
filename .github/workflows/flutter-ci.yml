@@ -399,9 +399,19 @@ jobs:
           java -version || { echo "❌ Java missing"; exit 1; }
           
           echo "📥 Downloading ZAP ${ZAP_VERSION}..."
+          
+          # Try to get the latest release info
+          echo "🔍 Checking available ZAP releases..."
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/zaproxy/zaproxy/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4 || echo "")
+          if [ -n "$LATEST_RELEASE" ]; then
+            echo "📋 Latest release: $LATEST_RELEASE"
+          fi
+          
           DOWNLOAD_URLS=(
-            "https://github.com/zaproxy/zaproxy/releases/latest/download/ZAP_2_14_0_unix.tar.gz"
-            "https://sourceforge.net/projects/zaproxy/files/latest/download"
+            "https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_linux.tar.gz"
+            "https://github.com/zaproxy/zaproxy/releases/download/v2.13.0/ZAP_2.13.0_linux.tar.gz"
+            "https://github.com/zaproxy/zaproxy/releases/download/v2.12.0/ZAP_2.12.0_linux.tar.gz"
+            "https://github.com/zaproxy/zaproxy/releases/download/v2.11.1/ZAP_2.11.1_linux.tar.gz"
           )
           DOWNLOAD_SUCCESS=false
           for url in "${DOWNLOAD_URLS[@]}"; do
@@ -413,7 +423,12 @@ jobs:
                 echo "✅ Download successful"
                 DOWNLOAD_SUCCESS=true
                 break
+              else
+                echo "⚠️ File too small (${FILE_SIZE} bytes), trying next URL..."
+                rm -f "ZAP_${ZAP_VERSION}_linux.tar.gz"
               fi
+            else
+              echo "⚠️ Download failed for $url"
             fi
           done
           if [ "$DOWNLOAD_SUCCESS" = false ]; then
