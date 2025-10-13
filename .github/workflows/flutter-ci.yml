@@ -612,6 +612,12 @@ jobs:
           python3 -m http.server 8000 --directory build/web &
           sleep 10  # Wait for server to start
 
+      - name: Install Python dependencies
+        run: |
+          echo "📦 Installing Python dependencies..."
+          pip install requests
+          python3 -c "import requests; print('✅ requests module installed')"
+
       - name: Run ZAP baseline scan
         run: |
           echo "🔍 Running ZAP baseline scan..."
@@ -627,14 +633,6 @@ jobs:
             echo "❌ ZAP daemon is not running"
             exit 1
           fi
-          
-          # Install Python dependencies
-          echo "📦 Installing Python dependencies..."
-          pip install requests
-          
-          # Verify dependencies
-          echo "✅ Verifying Python dependencies..."
-          python3 -c "import requests; print('requests module available')"
           
           # Create custom ZAP scan script
           echo "📝 Creating custom ZAP scan script..."
