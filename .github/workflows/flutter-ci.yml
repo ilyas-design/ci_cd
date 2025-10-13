@@ -628,6 +628,14 @@ jobs:
             exit 1
           fi
           
+          # Install Python dependencies
+          echo "📦 Installing Python dependencies..."
+          pip install requests
+          
+          # Verify dependencies
+          echo "✅ Verifying Python dependencies..."
+          python3 -c "import requests; print('requests module available')"
+          
           # Create custom ZAP scan script
           echo "📝 Creating custom ZAP scan script..."
           cat > zap-scan.py << 'EOF'
