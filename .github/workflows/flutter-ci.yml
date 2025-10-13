@@ -390,63 +390,38 @@ jobs:
       - name: Install OWASP ZAP
         run: |
           set -e
-          echo "🔧 Installing OWASP ZAP..."
-          ZAP_VERSION="2.14.0"
+          echo "🔧 Installing OWASP ZAP 2.16.1..."
+          ZAP_VERSION="2.16.1"
           ZAP_INSTALL_DIR="/opt/zap"
-          sudo rm -rf "${ZAP_INSTALL_DIR}" "ZAP_${ZAP_VERSION}_linux.tar.gz"
-          
-          echo "☕ Verifying Java..."
-          java -version || { echo "❌ Java missing"; exit 1; }
-          
-          echo "📥 Downloading ZAP ${ZAP_VERSION}..."
-          
-          # Try to get the latest release info
-          echo "🔍 Checking available ZAP releases..."
-          LATEST_RELEASE=$(curl -s https://api.github.com/repos/zaproxy/zaproxy/releases/latest | grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4 || echo "")
-          if [ -n "$LATEST_RELEASE" ]; then
-            echo "📋 Latest release: $LATEST_RELEASE"
-          fi
-          
-          DOWNLOAD_URLS=(
-            "https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_linux.tar.gz"
-            "https://github.com/zaproxy/zaproxy/releases/download/v2.13.0/ZAP_2.13.0_linux.tar.gz"
-            "https://github.com/zaproxy/zaproxy/releases/download/v2.12.0/ZAP_2.12.0_linux.tar.gz"
-            "https://github.com/zaproxy/zaproxy/releases/download/v2.11.1/ZAP_2.11.1_linux.tar.gz"
-          )
-          DOWNLOAD_SUCCESS=false
-          for url in "${DOWNLOAD_URLS[@]}"; do
-            echo "🔗 Trying: $url"
-            if curl -L -o "ZAP_${ZAP_VERSION}_linux.tar.gz" "$url"; then
-              FILE_SIZE=$(stat -c%s "ZAP_${ZAP_VERSION}_linux.tar.gz")
-              echo "📊 Size: ${FILE_SIZE} bytes"
-              if [ $FILE_SIZE -gt 100000000 ]; then
-                echo "✅ Download successful"
-                DOWNLOAD_SUCCESS=true
-                break
-              else
-                echo "⚠️ File too small (${FILE_SIZE} bytes), trying next URL..."
-                rm -f "ZAP_${ZAP_VERSION}_linux.tar.gz"
-              fi
-            else
-              echo "⚠️ Download failed for $url"
-            fi
-          done
-          if [ "$DOWNLOAD_SUCCESS" = false ]; then
-            echo "❌ Failed to download OWASP ZAP"
+          ZAP_FILE="ZAP_${ZAP_VERSION}_Linux.tar.gz"
+          ZAP_URL="https://github.com/zaproxy/zaproxy/releases/download/v${ZAP_VERSION}/${ZAP_FILE}"
+
+          # Clean up previous install
+          sudo rm -rf "${ZAP_INSTALL_DIR}" "${ZAP_FILE}"
+
+          echo "📥 Downloading ZAP from ${ZAP_URL}..."
+          curl -L -o "${ZAP_FILE}" "${ZAP_URL}"
+
+          FILE_SIZE=$(stat -c%s "${ZAP_FILE}")
+          echo "📊 File size: ${FILE_SIZE} bytes"
+
+          if [ ${FILE_SIZE} -lt 100000000 ]; then
+            echo "❌ Download failed or file corrupted."
             exit 1
           fi
 
-          echo "📦 Extracting..."
-          tar -xzf "ZAP_${ZAP_VERSION}_linux.tar.gz"
+          echo "📦 Extracting ZAP..."
+          tar -xzf "${ZAP_FILE}"
+
           ZAP_DIR=$(find . -type d -name "ZAP_*" | head -1)
-          sudo mv "$ZAP_DIR" "$ZAP_INSTALL_DIR"
+          sudo mv "${ZAP_DIR}" "${ZAP_INSTALL_DIR}"
           sudo chmod +x "${ZAP_INSTALL_DIR}/zap.sh"
 
           echo "🛠️ Adding ZAP to PATH..."
           echo "${ZAP_INSTALL_DIR}" >> $GITHUB_PATH
 
-          echo "✅ Testing ZAP..."
-          "${ZAP_INSTALL_DIR}/zap.sh" -version || echo "⚠️ Version check failed"
+          echo "✅ Testing installation..."
+          "${ZAP_INSTALL_DIR}/zap.sh" -version || echo "⚠️ Version check failed, continuing..."
 
       - name: Start ZAP daemon
         run: |
