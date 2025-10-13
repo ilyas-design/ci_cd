@@ -816,7 +816,7 @@ jobs:
       - name: Parse and report ZAP results
         run: |
           if [ -f "zap-results.json" ]; then
-            echo "## DAST Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo "## 🔍 DAST Scan Results" >> $GITHUB_STEP_SUMMARY
             echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             
@@ -826,20 +826,94 @@ jobs:
             LOW=$(grep -o '"Low"' zap-results.json | wc -l || echo "0")
             INFO=$(grep -o '"Informational"' zap-results.json | wc -l || echo "0")
             
-            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
-            echo "| Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
-            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
-            echo "| Info | $INFO |" >> $GITHUB_STEP_SUMMARY
+            echo "| 🔴 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| 🟡 Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
+            echo "| 🟢 Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+            echo "| ℹ️ Info | $INFO |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
             
-            # Fail if high severity issues found
+            # Detailed analysis of high severity issues
             if [ "$HIGH" -gt 0 ]; then
+              echo "### 🔴 High Severity Issues Detected" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              
+              # Extract high severity alerts with details
+              python3 << 'EOF'
+          import json
+          import sys
+          
+          try:
+              with open('zap-results.json', 'r') as f:
+                  data = json.load(f)
+              
+              alerts = data.get('alerts', [])
+              high_alerts = [alert for alert in alerts if alert.get('risk') == 'High']
+              
+              if high_alerts:
+                  print("| Issue | Description | URL |", file=sys.stdout)
+                  print("|-------|-------------|-----|", file=sys.stdout)
+                  
+                  for alert in high_alerts[:10]:  # Limit to first 10
+                      name = alert.get('name', 'Unknown')
+                      description = alert.get('description', 'No description')[:100] + '...' if len(alert.get('description', '')) > 100 else alert.get('description', 'No description')
+                      url = alert.get('url', 'Unknown')
+                      
+                      # Clean up the output for markdown
+                      name = name.replace('|', '\\|')
+                      description = description.replace('|', '\\|')
+                      url = url.replace('|', '\\|')
+                      
+                      print(f"| {name} | {description} | {url} |", file=sys.stdout)
+                  
+                  if len(high_alerts) > 10:
+                      print(f"| ... | ... and {len(high_alerts) - 10} more issues | ... |", file=sys.stdout)
+              else:
+                  print("No high severity alerts found in JSON structure.", file=sys.stdout)
+                  
+          except Exception as e:
+              print(f"Error parsing ZAP results: {e}", file=sys.stdout)
+          EOF
+              
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 🛠️ Recommended Actions:" >> $GITHUB_STEP_SUMMARY
+              echo "1. **Review** the high severity issues listed above" >> $GITHUB_STEP_SUMMARY
+              echo "2. **Fix** the vulnerabilities in your application" >> $GITHUB_STEP_SUMMARY
+              echo "3. **Re-run** the pipeline after fixes" >> $GITHUB_STEP_SUMMARY
+              echo "4. **Consider** adding false positive exclusions if needed" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 📋 Next Steps:" >> $GITHUB_STEP_SUMMARY
+              echo "- Download the full ZAP reports from artifacts" >> $GITHUB_STEP_SUMMARY
+              echo "- Review `zap-report.html` for detailed vulnerability information" >> $GITHUB_STEP_SUMMARY
+              echo "- Check `zap-results.json` for programmatic analysis" >> $GITHUB_STEP_SUMMARY
+              
               echo "❌ High severity issues found in DAST scan"
+              echo "📊 Found $HIGH high severity vulnerabilities that need attention"
               exit 1
             else
+              echo "### ✅ DAST Scan Passed" >> $GITHUB_STEP_SUMMARY
+              echo "No high severity security issues detected!" >> $GITHUB_STEP_SUMMARY
               echo "✅ DAST scan passed - no high severity issues"
             fi
+            
+            # Summary for medium/low issues
+            if [ "$MEDIUM" -gt 0 ] || [ "$LOW" -gt 0 ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### ⚠️ Additional Findings:" >> $GITHUB_STEP_SUMMARY
+              if [ "$MEDIUM" -gt 0 ]; then
+                echo "- $MEDIUM medium severity issues (review recommended)" >> $GITHUB_STEP_SUMMARY
+              fi
+              if [ "$LOW" -gt 0 ]; then
+                echo "- $LOW low severity issues (optional fixes)" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+            
           else
             echo "⚠️  No ZAP results file found"
+            echo "## ⚠️ DAST Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo "No ZAP results file was generated. This could indicate:" >> $GITHUB_STEP_SUMMARY
+            echo "- ZAP scan failed to complete" >> $GITHUB_STEP_SUMMARY
+            echo "- Web application was not accessible" >> $GITHUB_STEP_SUMMARY
+            echo "- ZAP daemon encountered an error" >> $GITHUB_STEP_SUMMARY
           fi
 
   # -----------------------------
