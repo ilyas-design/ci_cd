@@ -820,11 +820,54 @@ jobs:
             echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             
-            # Parse JSON results (basic parsing)
-            HIGH=$(grep -o '"High"' zap-results.json | wc -l || echo "0")
-            MEDIUM=$(grep -o '"Medium"' zap-results.json | wc -l || echo "0")
-            LOW=$(grep -o '"Low"' zap-results.json | wc -l || echo "0")
-            INFO=$(grep -o '"Informational"' zap-results.json | wc -l || echo "0")
+            # Debug: Show JSON structure
+            echo "🔍 Debug: First 500 characters of zap-results.json:"
+            head -c 500 zap-results.json
+            echo ""
+            echo "🔍 Debug: JSON keys found:"
+            python3 -c "
+            import json
+            try:
+                with open('zap-results.json', 'r') as f:
+                    data = json.load(f)
+                print('Top-level keys:', list(data.keys()))
+                if 'alerts' in data:
+                    print('Alerts count:', len(data['alerts']))
+                    if data['alerts']:
+                        print('First alert keys:', list(data['alerts'][0].keys()))
+            except Exception as e:
+                print('Error:', e)
+            "
+            
+            # Create Python script for parsing ZAP results
+            cat > parse_zap_results.py << 'PYTHON_EOF'
+            import json
+            import sys
+            
+            def count_alerts_by_risk(risk_level):
+                try:
+                    with open("zap-results.json", "r") as f:
+                        data = json.load(f)
+                    alerts = data.get("alerts", [])
+                    count = len([a for a in alerts if a.get("risk") == risk_level])
+                    print(count)
+                except Exception as e:
+                    print(f"Error parsing {risk_level} count: {e}", file=sys.stderr)
+                    print(0)
+            
+            if __name__ == "__main__":
+                if len(sys.argv) != 2:
+                    print("Usage: python3 parse_zap_results.py <risk_level>")
+                    sys.exit(1)
+                risk_level = sys.argv[1]
+                count_alerts_by_risk(risk_level)
+            PYTHON_EOF
+
+            # Parse JSON results using Python script
+            HIGH=$(python3 parse_zap_results.py "High")
+            MEDIUM=$(python3 parse_zap_results.py "Medium")
+            LOW=$(python3 parse_zap_results.py "Low")
+            INFO=$(python3 parse_zap_results.py "Informational")
             
             echo "| 🔴 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
             echo "| 🟡 Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
@@ -837,42 +880,47 @@ jobs:
               echo "### 🔴 High Severity Issues Detected" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               
+              # Create Python script for detailed ZAP analysis
+              cat > analyze_zap_details.py << 'PYTHON_EOF'
+              import json
+              import sys
+              
+              def analyze_high_severity_alerts():
+                  try:
+                      with open("zap-results.json", "r") as f:
+                          data = json.load(f)
+                      alerts = data.get("alerts", [])
+                      high_alerts = [alert for alert in alerts if alert.get("risk") == "High"]
+                      print(f"Debug: Total alerts found: {len(alerts)}")
+                      print(f"Debug: High severity alerts found: {len(high_alerts)}")
+                      if high_alerts:
+                          print("| Issue | Description | URL |")
+                          print("|-------|-------------|-----|")
+                          for alert in high_alerts[:10]:
+                              name = alert.get("name", "Unknown")
+                              description = alert.get("description", "No description")
+                              if len(description) > 100:
+                                  description = description[:100] + "..."
+                              url = alert.get("url", "Unknown")
+                              name = name.replace("|", "\\|").replace("\n", " ")
+                              description = description.replace("|", "\\|").replace("\n", " ")
+                              url = url.replace("|", "\\|")
+                              print(f"| {name} | {description} | {url} |")
+                          if len(high_alerts) > 10:
+                              print(f"| ... | ... and {len(high_alerts) - 10} more issues | ... |")
+                      else:
+                          print("No high severity alerts found in JSON structure.")
+                          print("Debug: Available alert risks:", list(set([alert.get("risk", "Unknown") for alert in alerts])))
+                  except Exception as e:
+                      print(f"Error parsing ZAP results: {e}", file=sys.stderr)
+                      print("| Error | Failed to parse results | N/A |")
+              
+              if __name__ == "__main__":
+                  analyze_high_severity_alerts()
+              PYTHON_EOF
+
               # Extract high severity alerts with details
-              python3 << 'EOF'
-          import json
-          import sys
-          
-          try:
-              with open('zap-results.json', 'r') as f:
-                  data = json.load(f)
-              
-              alerts = data.get('alerts', [])
-              high_alerts = [alert for alert in alerts if alert.get('risk') == 'High']
-              
-              if high_alerts:
-                  print("| Issue | Description | URL |", file=sys.stdout)
-                  print("|-------|-------------|-----|", file=sys.stdout)
-                  
-                  for alert in high_alerts[:10]:  # Limit to first 10
-                      name = alert.get('name', 'Unknown')
-                      description = alert.get('description', 'No description')[:100] + '...' if len(alert.get('description', '')) > 100 else alert.get('description', 'No description')
-                      url = alert.get('url', 'Unknown')
-                      
-                      # Clean up the output for markdown
-                      name = name.replace('|', '\\|')
-                      description = description.replace('|', '\\|')
-                      url = url.replace('|', '\\|')
-                      
-                      print(f"| {name} | {description} | {url} |", file=sys.stdout)
-                  
-                  if len(high_alerts) > 10:
-                      print(f"| ... | ... and {len(high_alerts) - 10} more issues | ... |", file=sys.stdout)
-              else:
-                  print("No high severity alerts found in JSON structure.", file=sys.stdout)
-                  
-          except Exception as e:
-              print(f"Error parsing ZAP results: {e}", file=sys.stdout)
-          EOF
+              python3 analyze_zap_details.py >> $GITHUB_STEP_SUMMARY
               
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "### 🛠️ Recommended Actions:" >> $GITHUB_STEP_SUMMARY
