@@ -822,52 +822,52 @@ jobs:
             
             # Parse JSON results using Python
             HIGH=$(python3 -c "
-            import json
-            try:
-                with open('zap-results.json', 'r') as f:
-                    data = json.load(f)
-                alerts = data.get('alerts', [])
-                count = len([a for a in alerts if a.get('risk') == 'High'])
-                print(count)
-            except:
-                print(0)
-            ")
+          import json
+          try:
+              with open('zap-results.json', 'r') as f:
+                  data = json.load(f)
+              alerts = data.get('alerts', [])
+              count = len([a for a in alerts if a.get('risk') == 'High'])
+              print(count)
+          except Exception as e:
+              print(0)
+          ")
             
-            MEDIUM=$(python3 -c "
-            import json
-            try:
-                with open('zap-results.json', 'r') as f:
-                    data = json.load(f)
-                alerts = data.get('alerts', [])
-                count = len([a for a in alerts if a.get('risk') == 'Medium'])
-                print(count)
-            except:
-                print(0)
-            ")
+            MEDIUM=$(python3 -c '
+          import json
+          try:
+              with open('zap-results.json', 'r') as f:
+                  data = json.load(f)
+              alerts = data.get('alerts', [])
+              count = len([a for a in alerts if a.get('risk') == 'Medium'])
+              print(count)
+          except Exception as e:
+              print(0)
+          ')
+
+            LOW=$(python3 -c '
+          import json
+          try:
+              with open('zap-results.json', 'r') as f:
+                  data = json.load(f)
+              alerts = data.get('alerts', [])
+              count = len([a for a in alerts if a.get('risk') == 'Low'])
+              print(count)
+          except Exception as e:
+              print(0)
+          ')
             
-            LOW=$(python3 -c "
-            import json
-            try:
-                with open('zap-results.json', 'r') as f:
-                    data = json.load(f)
-                alerts = data.get('alerts', [])
-                count = len([a for a in alerts if a.get('risk') == 'Low'])
-                print(count)
-            except:
-                print(0)
-            ")
-            
-            INFO=$(python3 -c "
-            import json
-            try:
-                with open('zap-results.json', 'r') as f:
-                    data = json.load(f)
-                alerts = data.get('alerts', [])
-                count = len([a for a in alerts if a.get('risk') == 'Informational'])
-                print(count)
-            except:
-                print(0)
-            ")
+            INFO=$(python3 -c '
+          import json
+          try:
+              with open('zap-results.json', 'r') as f:
+                  data = json.load(f)
+              alerts = data.get('alerts', [])
+              count = len([a for a in alerts if a.get('risk') == 'Informational'])
+              print(count)
+          except Exception as e:
+              print(0)
+          ')
             
             echo "| 🔴 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
             echo "| 🟡 Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
