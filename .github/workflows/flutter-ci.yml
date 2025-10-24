@@ -1166,24 +1166,24 @@ jobs:
             
             # Parse results using Python
             FILES_SCANNED=$(python3 -c "
-import json
-try:
-    with open('api_keys_report.json', 'r') as f:
-        data = json.load(f)
-    print(data['scan_summary']['total_files_scanned'])
-except:
-    print(0)
-")
+          import json
+          try:
+              with open('api_keys_report.json', 'r') as f:
+                  data = json.load(f)
+              print(data['scan_summary']['total_files_scanned'])
+          except:
+              print(0)
+          ")
             
             KEYS_FOUND=$(python3 -c "
-import json
-try:
-    with open('api_keys_report.json', 'r') as f:
-        data = json.load(f)
-    print(data['scan_summary']['total_keys_found'])
-except:
-    print(0)
-")
+          import json
+          try:
+              with open('api_keys_report.json', 'r') as f:
+                  data = json.load(f)
+              print(data['scan_summary']['total_keys_found'])
+          except:
+              print(0)
+          ")
             
             echo "| Files Scanned | $FILES_SCANNED |" >> $GITHUB_STEP_SUMMARY
             echo "| Keys Found | $KEYS_FOUND |" >> $GITHUB_STEP_SUMMARY
@@ -1198,14 +1198,14 @@ except:
               
               # Extract detailed findings
               python3 -c "
-import json
-try:
-    with open('api_keys_report.json', 'r') as f:
-        data = json.load(f)
-    for key in data['found_keys']:
-        print(f'| {key[\"type\"]} | {key[\"file\"]} | {key[\"line\"]} | {key[\"value\"]} |')
-except:
-    pass
+              import json
+              try:
+                  with open('api_keys_report.json', 'r') as f:
+                      data = json.load(f)
+                  for key in data['found_keys']:
+                      print(f'| {key[\"type\"]} | {key[\"file\"]} | {key[\"line\"]} | {key[\"value\"]} |')
+              except:
+                  pass
               " >> $GITHUB_STEP_SUMMARY
               
               echo "" >> $GITHUB_STEP_SUMMARY
