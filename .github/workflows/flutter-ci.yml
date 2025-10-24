@@ -820,54 +820,54 @@ jobs:
             echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             
-            # Debug: Show JSON structure
-            echo "🔍 Debug: First 500 characters of zap-results.json:"
-            head -c 500 zap-results.json
-            echo ""
-            echo "🔍 Debug: JSON keys found:"
-            python3 -c '
+            # Parse JSON results using Python
+            HIGH=$(python3 -c "
             import json
             try:
-                with open("zap-results.json", "r") as f:
+                with open('zap-results.json', 'r') as f:
                     data = json.load(f)
-                print("Top-level keys:", list(data.keys()))
-                if "alerts" in data:
-                    print("Alerts count:", len(data["alerts"]))
-                    if data["alerts"]:
-                        print("First alert keys:", list(data["alerts"][0].keys()))
-            except Exception as e:
-                print("Error:", e)
-            '
+                alerts = data.get('alerts', [])
+                count = len([a for a in alerts if a.get('risk') == 'High'])
+                print(count)
+            except:
+                print(0)
+            ")
             
-            # Create Python script for parsing ZAP results
-            cat > parse_zap_results.py << 'SCRIPT_EOF'
+            MEDIUM=$(python3 -c "
             import json
-            import sys
+            try:
+                with open('zap-results.json', 'r') as f:
+                    data = json.load(f)
+                alerts = data.get('alerts', [])
+                count = len([a for a in alerts if a.get('risk') == 'Medium'])
+                print(count)
+            except:
+                print(0)
+            ")
             
-            def count_alerts_by_risk(risk_level):
-                try:
-                    with open("zap-results.json", "r") as f:
-                        data = json.load(f)
-                    alerts = data.get("alerts", [])
-                    count = len([a for a in alerts if a.get("risk") == risk_level])
-                    print(count)
-                except Exception as e:
-                    print(f"Error parsing {risk_level} count: {e}", file=sys.stderr)
-                    print(0)
+            LOW=$(python3 -c "
+            import json
+            try:
+                with open('zap-results.json', 'r') as f:
+                    data = json.load(f)
+                alerts = data.get('alerts', [])
+                count = len([a for a in alerts if a.get('risk') == 'Low'])
+                print(count)
+            except:
+                print(0)
+            ")
             
-            if __name__ == "__main__":
-                if len(sys.argv) != 2:
-                    print("Usage: python3 parse_zap_results.py <risk_level>")
-                    sys.exit(1)
-                risk_level = sys.argv[1]
-                count_alerts_by_risk(risk_level)
-            SCRIPT_EOF
-
-            # Parse JSON results using Python script
-            HIGH=$(python3 parse_zap_results.py "High")
-            MEDIUM=$(python3 parse_zap_results.py "Medium")
-            LOW=$(python3 parse_zap_results.py "Low")
-            INFO=$(python3 parse_zap_results.py "Informational")
+            INFO=$(python3 -c "
+            import json
+            try:
+                with open('zap-results.json', 'r') as f:
+                    data = json.load(f)
+                alerts = data.get('alerts', [])
+                count = len([a for a in alerts if a.get('risk') == 'Informational'])
+                print(count)
+            except:
+                print(0)
+            ")
             
             echo "| 🔴 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
             echo "| 🟡 Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
@@ -875,64 +875,21 @@ jobs:
             echo "| ℹ️ Info | $INFO |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             
-            # Detailed analysis of high severity issues
+            # Check for high severity issues
             if [ "$HIGH" -gt 0 ]; then
               echo "### 🔴 High Severity Issues Detected" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              
-              # Create Python script for detailed ZAP analysis
-              cat > analyze_zap_details.py << 'SCRIPT_EOF'
-              import json
-              import sys
-              
-              def analyze_high_severity_alerts():
-                  try:
-                      with open("zap-results.json", "r") as f:
-                          data = json.load(f)
-                      alerts = data.get("alerts", [])
-                      high_alerts = [alert for alert in alerts if alert.get("risk") == "High"]
-                      print(f"Debug: Total alerts found: {len(alerts)}")
-                      print(f"Debug: High severity alerts found: {len(high_alerts)}")
-                      if high_alerts:
-                          print("| Issue | Description | URL |")
-                          print("|-------|-------------|-----|")
-                          for alert in high_alerts[:10]:
-                              name = alert.get("name", "Unknown")
-                              description = alert.get("description", "No description")
-                              if len(description) > 100:
-                                  description = description[:100] + "..."
-                              url = alert.get("url", "Unknown")
-                              name = name.replace("|", "\\|").replace("\n", " ")
-                              description = description.replace("|", "\\|").replace("\n", " ")
-                              url = url.replace("|", "\\|")
-                              print(f"| {name} | {description} | {url} |")
-                          if len(high_alerts) > 10:
-                              print(f"| ... | ... and {len(high_alerts) - 10} more issues | ... |")
-                      else:
-                          print("No high severity alerts found in JSON structure.")
-                          print("Debug: Available alert risks:", list(set([alert.get("risk", "Unknown") for alert in alerts])))
-                  except Exception as e:
-                      print(f"Error parsing ZAP results: {e}", file=sys.stderr)
-                      print("| Error | Failed to parse results | N/A |")
-              
-              if __name__ == "__main__":
-                  analyze_high_severity_alerts()
-              SCRIPT_EOF
-
-              # Extract high severity alerts with details
-              python3 analyze_zap_details.py >> $GITHUB_STEP_SUMMARY
-              
+              echo "Found $HIGH high severity vulnerabilities that need attention." >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "### 🛠️ Recommended Actions:" >> $GITHUB_STEP_SUMMARY
-              echo "1. **Review** the high severity issues listed above" >> $GITHUB_STEP_SUMMARY
+              echo "1. **Review** the high severity issues in the ZAP reports" >> $GITHUB_STEP_SUMMARY
               echo "2. **Fix** the vulnerabilities in your application" >> $GITHUB_STEP_SUMMARY
               echo "3. **Re-run** the pipeline after fixes" >> $GITHUB_STEP_SUMMARY
               echo "4. **Consider** adding false positive exclusions if needed" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "### 📋 Next Steps:" >> $GITHUB_STEP_SUMMARY
               echo "- Download the full ZAP reports from artifacts" >> $GITHUB_STEP_SUMMARY
-              echo "- Review `zap-report.html` for detailed vulnerability information" >> $GITHUB_STEP_SUMMARY
-              echo "- Check `zap-results.json` for programmatic analysis" >> $GITHUB_STEP_SUMMARY
+              echo "- Review \`zap-report.html\` for detailed vulnerability information" >> $GITHUB_STEP_SUMMARY
+              echo "- Check \`zap-results.json\` for programmatic analysis" >> $GITHUB_STEP_SUMMARY
               
               echo "❌ High severity issues found in DAST scan"
               echo "📊 Found $HIGH high severity vulnerabilities that need attention"
