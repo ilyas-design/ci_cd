@@ -453,7 +453,7 @@ jobs:
   docker-build-scan-push:
     name: 🐳 Docker Build, Scan & Push
     runs-on: ubuntu-latest
-    needs: [flutter-build-test, sast-scan, dependency-scan]
+    needs: [flutter-build-test, sast-scan, dependency-scan, api-keys-detection]
 
     steps:
       - name: Checkout repository
@@ -922,6 +922,315 @@ jobs:
           fi
 
   # -----------------------------
+  # API Keys Detection Scanner
+  # -----------------------------
+  api-keys-detection:
+    name: 🔑 API Keys Detection Scanner
+    runs-on: ubuntu-latest
+    needs: flutter-build-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for API keys scanning
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install API keys detection tools
+        run: |
+          echo "🔧 Installing API keys detection tools..."
+          pip install requests pyyaml
+          echo "✅ Tools installed successfully"
+
+      - name: Create API keys detection script
+        run: |
+          cat > api_keys_scanner.py << 'EOF'
+          #!/usr/bin/env python3
+          import os
+          import re
+          import json
+          import yaml
+          from pathlib import Path
+          
+          class APIKeysDetector:
+              def __init__(self):
+                  self.api_patterns = {
+                      # Common API key patterns
+                      'api_key': [
+                          r'api[_-]?key["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'apikey["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'API_KEY["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'APIKEY["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})'
+                      ],
+                      'secret_key': [
+                          r'secret[_-]?key["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'secretkey["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'SECRET_KEY["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'SECRETKEY["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})'
+                      ],
+                      'access_token': [
+                          r'access[_-]?token["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'accesstoken["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'ACCESS_TOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'ACCESSTOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})'
+                      ],
+                      'bearer_token': [
+                          r'bearer[_-]?token["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'bearertoken["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'BEARER_TOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'BEARERTOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})'
+                      ],
+                      'jwt_token': [
+                          r'jwt[_-]?token["\s]*[:=]["\s]*([a-zA-Z0-9_.-]{50,})',
+                          r'jwttoken["\s]*[:=]["\s]*([a-zA-Z0-9_.-]{50,})',
+                          r'JWT_TOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_.-]{50,})',
+                          r'JWTTOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_.-]{50,})'
+                      ],
+                      'oauth_token': [
+                          r'oauth[_-]?token["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'oauthtoken["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'OAUTH_TOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})',
+                          r'OAUTHTOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_-]{20,})'
+                      ],
+                      'private_key': [
+                          r'private[_-]?key["\s]*[:=]["\s]*([a-zA-Z0-9+/=]{50,})',
+                          r'privatekey["\s]*[:=]["\s]*([a-zA-Z0-9+/=]{50,})',
+                          r'PRIVATE_KEY["\s]*[:=]["\s]*([a-zA-Z0-9+/=]{50,})',
+                          r'PRIVATEKEY["\s]*[:=]["\s]*([a-zA-Z0-9+/=]{50,})'
+                      ]
+                  }
+                  
+                  # Service-specific patterns
+                  self.service_patterns = {
+                      'aws': [
+                          r'AKIA[0-9A-Z]{16}',  # AWS Access Key ID
+                          r'aws[_-]?access[_-]?key[_-]?id["\s]*[:=]["\s]*([A-Z0-9]{20})',
+                          r'aws[_-]?secret[_-]?access[_-]?key["\s]*[:=]["\s]*([A-Za-z0-9/+=]{40})'
+                      ],
+                      'google': [
+                          r'AIza[0-9A-Za-z_-]{35}',  # Google API Key
+                          r'google[_-]?api[_-]?key["\s]*[:=]["\s]*([A-Za-z0-9_-]{39})',
+                          r'GOOGLE_API_KEY["\s]*[:=]["\s]*([A-Za-z0-9_-]{39})'
+                      ],
+                      'github': [
+                          r'ghp_[0-9A-Za-z]{36}',  # GitHub Personal Access Token
+                          r'github[_-]?token["\s]*[:=]["\s]*([a-zA-Z0-9_-]{36})',
+                          r'GITHUB_TOKEN["\s]*[:=]["\s]*([a-zA-Z0-9_-]{36})'
+                      ],
+                      'stripe': [
+                          r'sk_live_[0-9a-zA-Z]{24}',  # Stripe Secret Key
+                          r'pk_live_[0-9a-zA-Z]{24}',  # Stripe Publishable Key
+                          r'stripe[_-]?secret[_-]?key["\s]*[:=]["\s]*([a-zA-Z0-9_-]{24})'
+                      ],
+                      'firebase': [
+                          r'firebase[_-]?api[_-]?key["\s]*[:=]["\s]*([A-Za-z0-9_-]{39})',
+                          r'FIREBASE_API_KEY["\s]*[:=]["\s]*([A-Za-z0-9_-]{39})'
+                      ],
+                      'twilio': [
+                          r'twilio[_-]?account[_-]?sid["\s]*[:=]["\s]*([A-Za-z0-9]{34})',
+                          r'twilio[_-]?auth[_-]?token["\s]*[:=]["\s]*([A-Za-z0-9]{32})'
+                      ]
+                  }
+                  
+                  self.found_keys = []
+                  self.scanned_files = 0
+                  self.excluded_dirs = {'.git', 'node_modules', '.dart_tool', 'build', 'coverage', '__pycache__', '.pytest_cache'}
+                  self.excluded_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf', '.eot'}
+          
+              def scan_file(self, file_path):
+                  """Scan a single file for API keys"""
+                  try:
+                      with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                          content = f.read()
+                          self.scanned_files += 1
+                          
+                          # Check generic API patterns
+                          for key_type, patterns in self.api_patterns.items():
+                              for pattern in patterns:
+                                  matches = re.finditer(pattern, content, re.IGNORECASE)
+                                  for match in matches:
+                                      key_value = match.group(1) if match.groups() else match.group(0)
+                                      self.found_keys.append({
+                                          'file': str(file_path),
+                                          'type': key_type,
+                                          'pattern': pattern,
+                                          'value': key_value[:20] + '...' if len(key_value) > 20 else key_value,
+                                          'line': content[:match.start()].count('\n') + 1
+                                      })
+                          
+                          # Check service-specific patterns
+                          for service, patterns in self.service_patterns.items():
+                              for pattern in patterns:
+                                  matches = re.finditer(pattern, content, re.IGNORECASE)
+                                  for match in matches:
+                                      key_value = match.group(1) if match.groups() else match.group(0)
+                                      self.found_keys.append({
+                                          'file': str(file_path),
+                                          'type': f'{service}_api_key',
+                                          'pattern': pattern,
+                                          'value': key_value[:20] + '...' if len(key_value) > 20 else key_value,
+                                          'line': content[:match.start()].count('\n') + 1
+                                      })
+                  except Exception as e:
+                      print(f"Error scanning {file_path}: {e}")
+          
+              def scan_directory(self, directory):
+                  """Recursively scan directory for API keys"""
+                  for root, dirs, files in os.walk(directory):
+                      # Remove excluded directories
+                      dirs[:] = [d for d in dirs if d not in self.excluded_dirs]
+                      
+                      for file in files:
+                          file_path = Path(root) / file
+                          
+                          # Skip excluded file types
+                          if file_path.suffix.lower() in self.excluded_extensions:
+                              continue
+                          
+                          # Only scan text files
+                          if file_path.suffix.lower() in {'.dart', '.js', '.ts', '.py', '.java', '.kt', '.swift', '.go', '.rs', '.php', '.rb', '.yml', '.yaml', '.json', '.xml', '.properties', '.env', '.config', '.conf', '.txt', '.md'}:
+                              self.scan_file(file_path)
+          
+              def generate_report(self):
+                  """Generate scan report"""
+                  report = {
+                      'scan_summary': {
+                          'total_files_scanned': self.scanned_files,
+                          'total_keys_found': len(self.found_keys),
+                          'scan_timestamp': str(Path().cwd())
+                      },
+                      'found_keys': self.found_keys
+                  }
+                  
+                  # Save detailed report
+                  with open('api_keys_report.json', 'w') as f:
+                      json.dump(report, f, indent=2)
+                  
+                  return report
+          
+          if __name__ == "__main__":
+              detector = APIKeysDetector()
+              print("🔍 Starting API keys detection scan...")
+              detector.scan_directory('.')
+              report = detector.generate_report()
+              
+              print(f"📊 Scan completed:")
+              print(f"  Files scanned: {report['scan_summary']['total_files_scanned']}")
+              print(f"  Keys found: {report['scan_summary']['total_keys_found']}")
+              
+              if report['found_keys']:
+                  print("\n🔑 Found API keys:")
+                  for key in report['found_keys']:
+                      print(f"  - {key['type']} in {key['file']}:{key['line']} ({key['value']})")
+                  print("\n❌ API keys detected! Please remove them from the codebase.")
+                  exit(1)
+              else:
+                  print("✅ No API keys detected in the codebase.")
+                  exit(0)
+          EOF
+          
+          chmod +x api_keys_scanner.py
+
+      - name: Run API keys detection scan
+        run: |
+          echo "🔍 Running API keys detection scan..."
+          python3 api_keys_scanner.py
+          SCAN_EXIT_CODE=$?
+          
+          if [ $SCAN_EXIT_CODE -eq 0 ]; then
+            echo "✅ API keys detection scan passed - no keys found"
+          else
+            echo "❌ API keys detection scan failed - keys found"
+            echo "📋 Review the api_keys_report.json file for details"
+          fi
+
+      - name: Upload API keys detection results
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-keys-detection-results
+          path: |
+            api_keys_report.json
+            api_keys_scanner.py
+          if-no-files-found: ignore
+
+      - name: Report API keys detection results
+        run: |
+          if [ -f "api_keys_report.json" ]; then
+            echo "## 🔑 API Keys Detection Results" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            
+            # Parse results using Python
+            FILES_SCANNED=$(python3 -c "
+import json
+try:
+    with open('api_keys_report.json', 'r') as f:
+        data = json.load(f)
+    print(data['scan_summary']['total_files_scanned'])
+except:
+    print(0)
+")
+            
+            KEYS_FOUND=$(python3 -c "
+import json
+try:
+    with open('api_keys_report.json', 'r') as f:
+        data = json.load(f)
+    print(data['scan_summary']['total_keys_found'])
+except:
+    print(0)
+")
+            
+            echo "| Files Scanned | $FILES_SCANNED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Keys Found | $KEYS_FOUND |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$KEYS_FOUND" -gt 0 ]; then
+              echo "### 🔴 API Keys Detected!" >> $GITHUB_STEP_SUMMARY
+              echo "The following API keys were found in the codebase:" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "| Type | File | Line | Value |" >> $GITHUB_STEP_SUMMARY
+              echo "|------|------|------|-------|" >> $GITHUB_STEP_SUMMARY
+              
+              # Extract detailed findings
+              python3 -c "
+import json
+try:
+    with open('api_keys_report.json', 'r') as f:
+        data = json.load(f)
+    for key in data['found_keys']:
+        print(f'| {key[\"type\"]} | {key[\"file\"]} | {key[\"line\"]} | {key[\"value\"]} |')
+except:
+    pass
+              " >> $GITHUB_STEP_SUMMARY
+              
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 🛠️ Recommended Actions:" >> $GITHUB_STEP_SUMMARY
+              echo "1. **Remove** all hardcoded API keys from the codebase" >> $GITHUB_STEP_SUMMARY
+              echo "2. **Use** environment variables or secure key management" >> $GITHUB_STEP_SUMMARY
+              echo "3. **Rotate** any exposed API keys immediately" >> $GITHUB_STEP_SUMMARY
+              echo "4. **Review** the detailed report in artifacts" >> $GITHUB_STEP_SUMMARY
+              
+              echo "❌ API keys detected in codebase - build failed"
+              exit 1
+            else
+              echo "### ✅ No API Keys Detected" >> $GITHUB_STEP_SUMMARY
+              echo "Great! No API keys were found in the codebase." >> $GITHUB_STEP_SUMMARY
+              echo "✅ API keys detection scan passed"
+            fi
+          else
+            echo "⚠️ No API keys report generated"
+            echo "## ⚠️ API Keys Detection Results" >> $GITHUB_STEP_SUMMARY
+            echo "No API keys report was generated. This could indicate:" >> $GITHUB_STEP_SUMMARY
+            echo "- Scanner encountered an error" >> $GITHUB_STEP_SUMMARY
+            echo "- No files were scanned" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # -----------------------------
   # Secret Scanning
   # -----------------------------
   secret-scan:
@@ -980,7 +1289,7 @@ jobs:
   git-tagging:
     name: 🏷️ Git Tagging
     runs-on: ubuntu-latest
-    needs: [semantic-versioning, flutter-build-test, sast-scan, dependency-scan, docker-build-scan-push, secret-scan]
+    needs: [semantic-versioning, flutter-build-test, sast-scan, dependency-scan, docker-build-scan-push, secret-scan, api-keys-detection]
     if: needs.semantic-versioning.outputs.is-release == 'true' && github.event_name == 'push'
 
     steps:
@@ -1052,7 +1361,7 @@ jobs:
   security-summary:
     name: 📊 Security Summary
     runs-on: ubuntu-latest
-    needs: [semantic-versioning, sast-scan, dependency-scan, docker-build-scan-push, secret-scan, git-tagging]
+    needs: [semantic-versioning, sast-scan, dependency-scan, docker-build-scan-push, secret-scan, api-keys-detection, git-tagging]
     if: always()
 
     steps:
@@ -1066,6 +1375,7 @@ jobs:
           echo "| Dependency (Snyk) | ${{ needs.dependency-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Docker (Trivy Image) | ${{ needs.docker-build-scan-push.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Secret Scan | ${{ needs.secret-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Keys Detection | ${{ needs.api-keys-detection.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| DAST (ZAP) | ${{ needs.dast-scan.result || 'Skipped' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
@@ -1094,6 +1404,7 @@ jobs:
           echo "- ✅ **Enhanced security scanning with Snyk**" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ **OWASP ZAP DAST implementation**" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ **Secret scanning with TruffleHog & GitLeaks**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **API keys detection scanner**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "## 📝 Usage Instructions:" >> $GITHUB_STEP_SUMMARY
