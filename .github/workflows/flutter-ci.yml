@@ -825,19 +825,19 @@ jobs:
             head -c 500 zap-results.json
             echo ""
             echo "🔍 Debug: JSON keys found:"
-            python3 -c "
+            python3 -c '
             import json
             try:
-                with open('zap-results.json', 'r') as f:
+                with open("zap-results.json", "r") as f:
                     data = json.load(f)
-                print('Top-level keys:', list(data.keys()))
-                if 'alerts' in data:
-                    print('Alerts count:', len(data['alerts']))
-                    if data['alerts']:
-                        print('First alert keys:', list(data['alerts'][0].keys()))
+                print("Top-level keys:", list(data.keys()))
+                if "alerts" in data:
+                    print("Alerts count:", len(data["alerts"]))
+                    if data["alerts"]:
+                        print("First alert keys:", list(data["alerts"][0].keys()))
             except Exception as e:
-                print('Error:', e)
-            "
+                print("Error:", e)
+            '
             
             # Create Python script for parsing ZAP results
             cat > parse_zap_results.py << 'SCRIPT_EOF'
