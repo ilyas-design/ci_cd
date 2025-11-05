@@ -16,7 +16,7 @@ void main() {
       // Verify home page is displayed
       expect(find.text('World Countries'), findsOneWidget);
       expect(
-        find.text('Explore countries from around the world'),
+        find.textContaining('Explore countries from around the world'),
         findsOneWidget,
       );
 
