@@ -337,6 +337,24 @@ jobs:
             pubspec.lock
           retention-days: 30
 
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-*-release.apk
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload test coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Display build information
         run: |
           echo "## 🚀 Build Information" >> $GITHUB_STEP_SUMMARY
